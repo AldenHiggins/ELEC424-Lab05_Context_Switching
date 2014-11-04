@@ -20,35 +20,12 @@ will run and once it has completed the interrupt running task2 will continue.
 
 Q3. What is MSP and PSP, what are they used for? 
 
-MSP -> main stack pointer, initialized to 0x000000 on reset
-	-> always used by handler mode
-	-> recommended to be used by kernels and handlers
-PSP -> program stack pointer
-	-> recommended to be used by threads (user programs)
+
 
 Q4. What is SysTick and PendSV? 
 
-PendSV -> software interrupt that can be called by a program
-SysTick -> 24 bit counter that is fired when it equals 0
-
-Both invoke context switcher
-
 Q5. What context contents are saved during a context switch, by hardware or by 
     software?
-
-Hardware -> saves program stack frame onto process stack transfers PSP to register
-			-> PSP 0-6
-		 -> saves state of special registers/program counter/etc...
-		 -> saves function arguments alongside current function (stack pointer)
-		 -> hardware pushes hardware stack
-		 	-> PSR
-		 	-> PC - program counter
-		 	-> LR - Link register?
-		 	-> r4-r0 -> function arguments/current function?
-
-
-Software -> pushes software stack frame onto stack
-		-> r11-r4
 
 Part 2: 2
 
@@ -71,12 +48,3 @@ Indicate the percentage work contributed by each partner below (should add up to
 
 <PARTNER1>: 
 <PARTNER2>: 
-
-
-
-
-Implementation notes:
-
-Context switch interrupt happens
-	-save program stack frame onto process stack
-	-add current PSP value to the task switcher table (just gonna be like two tasks so not much of a table)
