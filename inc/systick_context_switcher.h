@@ -7,7 +7,7 @@ void main(void);
 // void SysTick_Handler(void);
 void Dummy_Function(void);
 void Other_Dummy_Function(void);
-void newTask(void (*p)(void), void * arg, void * stackaddr, int stack_size);
+void InitializeTaskStacks(void (*p)(void), void * arg, void * stackaddr, int stack_size);
 static inline void * rd_program_stack_ptr(void);
 static inline void save_context(void);
 static inline void load_context(void);
