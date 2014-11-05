@@ -1,4 +1,4 @@
-#include "systick_context_switcher.h"
+#include "pendsv_context_switcher.h"
 #include "sys_init.h"
 #include "tasks.h"
 // #include "stm32f10x_conf.h"
@@ -20,7 +20,6 @@ uint32_t ledStack[300];
 #define COUNT_INTERVAL 10000
 uint32_t counter;
 
-
 void main(void)
 {
 	init_system_clk();
@@ -28,7 +27,6 @@ void main(void)
 	init_blink();
 
 	handlingLedOrMotor = 1;
-
 	motorPSP = 0;
 	ledPSP = 0;
 	counter = 0;
@@ -37,6 +35,18 @@ void main(void)
 
   	// Initialize the two tasks
   	InitializeTaskStacks();
+
+  	// Initialize pendsv
+  	// *((uint32_t volatile *)0xE000ED04) = 0x10000000;
+	// NVIC_InitTypeDef nvicStructure;
+	// nvicStructure.NVIC_IRQChannel = PendSV_IRQn;
+	// nvicStructure.NVIC_IRQChannelPreemptionPriority = 50;
+	// nvicStructure.NVIC_IRQChannelSubPriority = 1;
+	// nvicStructure.NVIC_IRQChannelCmd = ENABLE;
+	// NVIC_Init(&nvicStructure);
+  	// Set the two interrupts
+  	*((uint32_t volatile *)0xE000ED20) = *((uint32_t volatile *)0xE000ED20) | 0x00FF0000;
+  	// *priorityLocation = (*priorityLocation | 0x00F80000);
 
 	if (SysTick_Config(72000000 / 5000))
 	{ 
@@ -81,7 +91,20 @@ static inline void * rd_program_stack_ptr(void)
   return result;
 }
 
+
 void SysTick_Handler(void)
+{
+	// Use counter to slow down the systick
+	counter++;
+	if (counter >= COUNT_INTERVAL)
+	{
+		counter = 0;
+		// Trigger pendsv???
+		*((uint32_t volatile *)0xE000ED04) = 0x10000000;
+	}
+}
+
+void PendSV_Handler(void)
 {
 	// Handle the first case, load and run LED blink
 	if (firstInterruptFlag == 1)
@@ -112,73 +135,67 @@ void SysTick_Handler(void)
 	}
 	else
 	{
-		// Use counter to slow down the systick
-		counter++;
-		if (counter >= COUNT_INTERVAL)
+		// Save context
+		asm volatile 
+		(
+			"MRS r0, psp\n\t"
+  			"STMDB r0!, {r4-r11}\n\t"
+  			"MSR psp, r0\n\t"
+  		);
+
+		// Handler is returning from LED and should call motor
+		if (handlingLedOrMotor == 1)
 		{
-			counter = 0;
-			// Save context
-			asm volatile 
+			handlingLedOrMotor = 0;
+			// Save current PSP of LED
+			asm volatile
 			(
-				"MRS r0, psp\n\t"
-      			"STMDB r0!, {r4-r11}\n\t"
-      			"MSR psp, r0\n\t"
-      		);
-
-			// Handler is returning from LED and should call motor
-			if (handlingLedOrMotor == 1)
-			{
-				handlingLedOrMotor = 0;
-				// Save current PSP of LED
-				asm volatile
-				(
-					"MRS %0, psp"
-					: "=r" (ledPSP) : 
-				);
-				// Set your PSP to the motorPSP
-				asm volatile
-				(
-					"MSR psp, %0"
-					: : "r" (motorPSP)
-				);
-			}
-			// Handler is returning from motor and should call LED
-			else
-			{
-				handlingLedOrMotor = 1;
-				// Save current PSP of LED
-				asm volatile
-				(
-					"MRS %0, psp"
-					: "=r" (motorPSP) : 
-				);
-				// Set your PSP 
-				asm volatile
-				(
-					"MSR psp, %0"
-					: : "r" (ledPSP)
-				);
-			}
-			// Load in software stack registers and increment PSP
-			asm volatile 
-			(
-				"MRS r0, psp\n\t"
-				"LDMIA r0!, {r4-r11}\n\t"
-				"MSR psp, r0\n\t"
+				"MRS %0, psp"
+				: "=r" (ledPSP) : 
 			);
+			// Set your PSP to the motorPSP
+			asm volatile
+			(
+				"MSR psp, %0"
+				: : "r" (motorPSP)
+			);
+		}
+		// Handler is returning from motor and should call LED
+		else
+		{
+			handlingLedOrMotor = 1;
+			// Save current PSP of LED
+			asm volatile
+			(
+				"MRS %0, psp"
+				: "=r" (motorPSP) : 
+			);
+			// Set your PSP 
+			asm volatile
+			(
+				"MSR psp, %0"
+				: : "r" (ledPSP)
+			);
+		}
+		// Load in software stack registers and increment PSP
+		asm volatile 
+		(
+			"MRS r0, psp\n\t"
+			"LDMIA r0!, {r4-r11}\n\t"
+			"MSR psp, r0\n\t"
+		);
 
-			// Set LR only for the first time you run the motor task
-			// to signal the program to use the PSP
-			if (firstTimeSetLR)
-			{
-				firstTimeSetLR = 0;
-				asm volatile
-				(
-					"movw lr, #0xFFFD\n\t"
-					"movt lr, #0xFFFF\n\t"
-					"bx lr"
-				);	
-			}
+		// Set LR only for the first time you run the motor task
+		// to signal the program to use the PSP
+		if (firstTimeSetLR)
+		{
+			firstTimeSetLR = 0;
+			asm volatile
+			(
+				"movw lr, #0xFFFD\n\t"
+				"movt lr, #0xFFFF\n\t"
+				"bx lr"
+			);	
 		}
 	}
 }
